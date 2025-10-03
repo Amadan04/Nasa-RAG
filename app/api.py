@@ -1,30 +1,48 @@
 from typing import List, Literal
 from fastapi import FastAPI, Query
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-#from app.openrouter_client import embed_text, chat_messages
-from app.rag_engine import retrieve_chunks_by_query_embedding
-# ❌ current (causes 500)
-# from app.openrouter_client import embed_text, chat_messages
-
-# ✅ correct (local embeddings + OpenRouter for chat)
-from app.embedder import embed_text
-from app.openrouter_client import chat_messages
+from app.embedder import embed_text               # local embeddings
+from app.openrouter_client import chat_messages   # OpenRouter for generation
+from app.rag_engine import retrieve_with_scores
 
 app = FastAPI(title="SpaceBio RAG API 🚀")
 
-def context_quality(docs: List[str], min_chars=800) -> bool:
+# Allow your frontend to call the API
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],   # replace with your domain(s) for production
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+def context_quality(docs: List[str], min_chars=30) -> bool:
     return len("\n\n".join(docs)) >= min_chars
+
+# cosine distance: 0 = identical, 1 = unrelated.
+# Lower is better. 0.32–0.40 is a good starting threshold for MiniLM.
+RELEVANCE_DISTANCE_THRESHOLD = 0.32
+
+def is_relevant(distances: List[float], threshold: float = RELEVANCE_DISTANCE_THRESHOLD) -> bool:
+    return any(d is not None and d < threshold for d in distances)
+
+@app.get("/healthz")
+def healthz():
+    return {"ok": True}
 
 @app.get("/ask")
 def ask(query: str = Query(..., min_length=3), only_context: bool = False, k: int = 5):
     q_emb = embed_text(query)
-    docs, metas = retrieve_chunks_by_query_embedding(q_emb, k=k)
+    docs, metas, distances = retrieve_with_scores(q_emb, k=k)
     ctx = "\n\n".join(docs)
-    citations = sorted({m.get("source","") for m in metas if m.get("source")})
+    citations = sorted({m.get("source", "") for m in metas if m.get("source")})
 
-    use_rag = context_quality(docs) or only_context
-    if use_rag:
+    relevant = is_relevant(distances)
+    enough_text = context_quality(docs)
+
+    if only_context or (relevant and enough_text):
         sys_prompt = ("You are a space biology expert. Answer ONLY using the provided context. "
                       "If the answer isn't there, say 'I don't know.' Keep it concise.")
         user_prompt = f"Context:\n{ctx}\n\nQuestion: {query}"
@@ -32,11 +50,11 @@ def ask(query: str = Query(..., min_length=3), only_context: bool = False, k: in
     else:
         sys_prompt = "You are a helpful science assistant. Use general knowledge. If uncertain, say you're unsure."
         user_prompt = query
-        mode = "Fallback"
+        mode = "AI"
 
     messages = [
-        {"role":"system","content": sys_prompt},
-        {"role":"user","content": user_prompt}
+        {"role": "system", "content": sys_prompt},
+        {"role": "user", "content": user_prompt},
     ]
     answer = chat_messages(messages)
 
@@ -57,12 +75,14 @@ def chat(req: ChatReq):
     query = user_msgs[-1].content if user_msgs else ""
 
     q_emb = embed_text(query)
-    docs, metas = retrieve_chunks_by_query_embedding(q_emb, k=req.k)
+    docs, metas, distances = retrieve_with_scores(q_emb, k=req.k)
     ctx = "\n\n".join(docs)
-    citations = sorted({m.get("source","") for m in metas if m.get("source")})
+    citations = sorted({m.get("source", "") for m in metas if m.get("source")})
 
-    use_rag = context_quality(docs) or req.only_context
-    if use_rag:
+    relevant = is_relevant(distances)
+    enough_text = context_quality(docs)
+
+    if req.only_context or (relevant and enough_text):
         sys_prompt = ("You are a space biology expert. Answer ONLY using the provided context. "
                       "If the answer isn't there, say 'I don't know.' Keep it concise.")
         user_prompt = f"Context:\n{ctx}\n\nQuestion: {query}"
@@ -70,10 +90,10 @@ def chat(req: ChatReq):
     else:
         sys_prompt = "You are a helpful science assistant. Use general knowledge. If uncertain, say you're unsure."
         user_prompt = query
-        mode = "Fallback"
+        mode = "AI"
 
     history = req.messages[-6:]
-    messages = [{"role":"system","content": sys_prompt}] + history[:-1] + [{"role":"user","content": user_prompt}]
+    messages = [{"role": "system", "content": sys_prompt}] + history[:-1] + [{"role": "user", "content": user_prompt}]
     answer = chat_messages(messages)
 
     return {"answer": answer, "mode": mode, "citations": citations, "chunks_used": len(docs)}
