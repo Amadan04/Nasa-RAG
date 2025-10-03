@@ -3,7 +3,8 @@ import chromadb
 from chromadb.config import Settings
 from dotenv import load_dotenv
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from app.openrouter_client import embed_text
+#from app.openrouter_client import embed_text
+from app.embedder import embed_text   # <-- uses local embeddings now
 
 load_dotenv()
 

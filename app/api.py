@@ -2,8 +2,14 @@ from typing import List, Literal
 from fastapi import FastAPI, Query
 from pydantic import BaseModel
 
-from app.openrouter_client import embed_text, chat_messages
+#from app.openrouter_client import embed_text, chat_messages
 from app.rag_engine import retrieve_chunks_by_query_embedding
+# ❌ current (causes 500)
+# from app.openrouter_client import embed_text, chat_messages
+
+# ✅ correct (local embeddings + OpenRouter for chat)
+from app.embedder import embed_text
+from app.openrouter_client import chat_messages
 
 app = FastAPI(title="SpaceBio RAG API 🚀")
 

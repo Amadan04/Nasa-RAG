@@ -43,12 +43,22 @@ def _ensure_json(resp: requests.Response) -> dict:
     except json.JSONDecodeError:
         raise RuntimeError(f"OpenRouter JSON decode error. Body (first 500): {txt[:500]}")
 
+# app/openrouter_client.py (only this function)
 def embed_text(text: str) -> list[float]:
-    """Return a single embedding vector from OpenRouter with robust error handling."""
-    payload = {"model": EMBED_MODEL, "input": text}
+    payload = {"model": EMBED_MODEL, "input": [text]}  # LIST!
     r = requests.post(f"{BASE_URL}/embeddings", headers=HEADERS, json=payload, timeout=60)
-    j = _ensure_json(r)
+    # Debug on any non-JSON
+    if "application/json" not in (r.headers.get("content-type") or "").lower():
+        print(">>> DEBUG embeddings",
+              "status:", r.status_code,
+              "ct:", r.headers.get("content-type"),
+              "url:", r.url,
+              "body:", (r.text or "")[:400])
+        r.raise_for_status()
+        raise RuntimeError("Embeddings endpoint did not return JSON")
+    j = r.json()
     return j["data"][0]["embedding"]
+
 
 def chat_messages(messages, model: str | None = None, temperature: float = 0.2) -> str:
     payload = {
