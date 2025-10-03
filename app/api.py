@@ -23,7 +23,7 @@ def context_quality(docs: List[str], min_chars=30) -> bool:
 
 # cosine distance: 0 = identical, 1 = unrelated.
 # Lower is better. 0.32–0.40 is a good starting threshold for MiniLM.
-RELEVANCE_DISTANCE_THRESHOLD = 0.32
+RELEVANCE_DISTANCE_THRESHOLD = 0.8
 
 def is_relevant(distances: List[float], threshold: float = RELEVANCE_DISTANCE_THRESHOLD) -> bool:
     return any(d is not None and d < threshold for d in distances)
