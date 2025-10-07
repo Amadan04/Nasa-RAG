@@ -18,24 +18,4 @@ env/
 
 # ChromaDB vector store
 app/vector_store/
-
-# Jupyter Notebook checkpoints
-.ipynb_checkpoints/
-
-# OS files
-.DS_Store
-Thumbs.db
-
-# Logs
-*.log
-
-# Data files
-*.csv
-*.tsv
-*.xlsx
-*.db
-
-# Build
-build/
-dist/
-*.egg-info/
+.env
